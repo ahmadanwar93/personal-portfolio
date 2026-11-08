@@ -1,0 +1,22 @@
+---
+title: LRT Visualisation
+date: 2024-08-31
+summary: Travel times between stops on the LRT Kelana Jaya line, shown through type size and colour.
+kind: study
+flower: sprig
+cover: ../../assets/posts/lrt/lrt.jpg
+coverAlt: Station pairs on the Kelana Jaya line set as text, each sized and highlighted by the travel time between them.
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import poster from '../../assets/posts/lrt/lrt.jpg';
+
+A fun one with my friend Ren. We wanted to see how long it takes to get between stops on the LRT Kelana Jaya line, and how much those times vary from one pair of stations to the next <Ref n={1} />.
+
+<Fig n={1} src={poster} alt="Station pairs on the Kelana Jaya line set as text, each sized and highlighted by the travel time between them." size="square">
+  Each pair of stations is set in a size and colour that match its travel time, from about one minute up to four.
+</Fig>
+
+## Type as the chart
+
+The idea came from design systems. A design system lists a brand’s font families, sizes and colours, and I borrowed that as the rulebook: the only things that change in this piece are font size and colour, and both encode travel time <Ref n={1} />.

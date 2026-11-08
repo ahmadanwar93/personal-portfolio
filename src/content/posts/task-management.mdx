@@ -1,0 +1,35 @@
+---
+title: Task Management App
+date: 2025-11-01
+summary: A to-do app shaped by my paper journal, built full stack with Laravel and React.
+kind: build
+flower: daisy
+status: in-progress
+cover: ../../assets/posts/task-management/task-management-1.jpg
+coverAlt: Screens from the task management app.
+stack: [Laravel, React]
+links:
+  - { label: Backend repo, href: 'https://github.com/ahmadanwar93/task-management-backend' }
+  - { label: Frontend repo, href: 'https://github.com/ahmadanwar93/task-management-frontend' }
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import shot from '../../assets/posts/task-management/task-management-1.jpg';
+
+I write my to-do list in a journal every day, and I still love doing it. This project asks whether I can code my own version.
+
+The hardest part of a to-do list, for me, is the tasks that don’t belong to a particular day, like reading an article I found online. It’s a small problem, but a good excuse to explore <Ref n={1} />.
+
+<Fig n={1} src={shot} alt="Screens from the task management app." size="square">
+  Workspaces, sprints and tasks in the first release.
+</Fig>
+
+## First release
+
+**11 November 2025.** The goal is a minimum viable product where you can:
+
+- create a workspace
+- create and edit sprints
+- create and edit tasks
+
+Deployment comes next. I’ll keep adding releases to this post as they ship.

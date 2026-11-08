@@ -1,0 +1,46 @@
+---
+import Press from '../layouts/Press.astro';
+import Rosette from '../components/press/Rosette.astro';
+import { FLOWERS } from '../lib/rosette';
+
+const names: Record<string, string> = {
+  bloom: 'Guilloche bloom',
+  daisy: 'Daisy',
+  star: 'Star-flower',
+  rose: 'Rose curve',
+  lotus: 'Lotus',
+  seedhead: 'Seed head',
+  leaf: 'Leaf',
+  sprig: 'Sprig',
+  fern: 'Fern',
+};
+const seeds = ['alpha', 'kelana', 'gemas'];
+---
+<Press title="Specimens · Fikri" description="Every engraved figure the formal edition can print.">
+  <main class="wrap">
+    <h1 class="caps inked debossed">Specimens</h1>
+    <p class="intro">
+      Every post is given one of these figures, chosen from its file name. Each row shows one form drawn from three
+      different names. To choose a form yourself, add <code>flower:</code> with the name in small capitals below to
+      the post’s front matter.
+    </p>
+    {FLOWERS.map((f) => (
+      <section class="row" aria-label={names[f]}>
+        <h2><span class="sc">{names[f]}</span> <code>{f}</code></h2>
+        <div class="plates">
+          {seeds.map((s) => <Rosette seed={s} form={f} size="100%" />)}
+        </div>
+      </section>
+    ))}
+  </main>
+</Press>
+
+<style>
+  .wrap { max-width: 60rem; margin: clamp(48px, 8vw, 96px) auto 0; padding: 0 var(--gutter); }
+  h1 { margin: 0; text-align: center; font-size: clamp(2.25rem, 1.5rem + 3vw, 3.75rem); letter-spacing: 0.2em; margin-right: -0.2em; }
+  .intro { max-width: 30em; margin: 1.2em auto 0; text-align: center; font-style: italic; color: var(--ink-2); }
+  code { font-family: var(--f-code); font-size: 0.72em; font-style: normal; color: var(--rubric); }
+  .row { margin-top: clamp(56px, 8vw, 88px); }
+  h2 { display: flex; justify-content: center; align-items: baseline; gap: 14px; margin: 0 0 24px; font-size: 1.125rem; letter-spacing: 0.1em; }
+  .plates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 4vw, 56px); }
+</style>

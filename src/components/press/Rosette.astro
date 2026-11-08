@@ -1,0 +1,35 @@
+---
+import { rosette, type Flower } from '../../lib/rosette';
+
+interface Props {
+  seed: string;
+  /** pin a form instead of letting the seed choose */
+  form?: Flower;
+  size?: string;
+  detail?: 'full' | 'small';
+  /** draws its lines in once, as if being printed */
+  print?: boolean;
+  vt?: string;
+  class?: string;
+}
+const { seed, form, size = '100%', detail = 'full', print = false, vt, class: cls } = Astro.props;
+const r = rosette(seed, detail, form);
+const style = `width:${size};${vt ? `view-transition-name:${vt};` : ''}`;
+---
+<svg
+  class:list={['rosette', print && 'is-printing', cls]}
+  viewBox="0 0 200 200"
+  style={style}
+  aria-hidden="true"
+  focusable="false"
+>
+  <g class="r-outer">
+    {r.outer.map((d, i) => <path d={d} style={`--i:${Math.min(i, 24)}`} />)}
+  </g>
+  <g class="r-inner">
+    {r.inner.map((d, i) => <path d={d} style={`--i:${Math.min(i + 6, 30)}`} />)}
+  </g>
+  <g class="r-dots">
+    {r.dots.map((p) => <circle class="r-eye" cx={p.x.toFixed(2)} cy={p.y.toFixed(2)} r={p.r} />)}
+  </g>
+</svg>

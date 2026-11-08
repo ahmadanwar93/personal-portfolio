@@ -1,0 +1,43 @@
+---
+title: Birthday Visualisation
+date: 2024-08-31
+summary: Every January birth in Malaysia from 1920 to 2022, drawn as tree rings.
+kind: study
+cover: ../../assets/posts/birthday-baby/birthday-baby.jpg
+coverAlt: A calendar grid of January in which each day is a set of tree rings sized by the number of births.
+stack: [Python, pandas]
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import poster from '../../assets/posts/birthday-baby/birthday-baby.jpg';
+
+This started with the [birthday explorer](https://data.gov.my/dashboard/birthday-explorer) on data.gov.my. I got stuck on January: births spike at the very start of the month (and at the end of December), and I still don’t know why <Ref n={1} />.
+
+<Fig n={1} src={poster} alt="A calendar grid of January in which each day is a set of tree rings sized by the number of births." size="square">
+  Number of babies born on each day of January, 1920 to 2022. Each ring marks another ten thousand births.
+</Fig>
+
+## Why tree rings
+
+I wanted this to sit somewhere between a chart and a piece of graphic design, which is why it looks a bit wacky. I went through a lot of ways to draw a birthday and landed on tree rings: they tell you a tree’s age, which felt close enough to a birthday. Thanks to Naz for the feedback along the way.
+
+## More to explore
+
+I’d like to know whether the pattern holds if you look at both the total and the average births for each day across all the years. I haven’t had time to draw it, but the code to get those numbers is below. It reads the [births CSV from the data catalogue](https://data.gov.my/data-catalogue/births).
+
+```python
+import pandas as pd
+
+df = pd.read_csv('births.csv')
+df['date'] = pd.to_datetime(df['date'], errors='coerce')
+
+grouped = df.groupby(df['date'].dt.day)['births']
+
+avg_births = grouped.mean().reset_index()
+avg_births.columns = ['day', 'avg_births']
+avg_births.to_csv('daily_births_average.csv', index=False)
+
+sum_births = grouped.sum().reset_index()
+sum_births.columns = ['day', 'total_births']
+sum_births.to_csv('daily_births_sum.csv', index=False)
+```

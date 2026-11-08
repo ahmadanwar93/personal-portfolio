@@ -1,0 +1,156 @@
+---
+import { getCollection } from 'astro:content';
+import Press from '../layouts/Press.astro';
+import Rosette from '../components/press/Rosette.astro';
+
+const posts = (await getCollection('posts')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+const fmt = (d: Date) => d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+---
+<Press title="Fikri · A Playground">
+  <main>
+    <section class="title-page" aria-labelledby="t">
+      <Rosette seed="fikri-playground" form="bloom" size="clamp(200px, 26vw, 320px)" print class="frontis" />
+      <h1 id="t" class="name caps inked debossed">Fikri</h1>
+      <p class="sub sc rubric inked">A playground of design &amp; engineering</p>
+      <p class="opening">
+        I design and build small things for the web, and set each one down here with an honest account of how
+        it was made: what worked, what broke, and what I would try next.
+      </p>
+    </section>
+
+    <section id="contents" class="contents" aria-labelledby="c">
+      <div class="section-head">
+        <h2 id="c" class="sc">Contents</h2>
+      </div>
+      <ol>
+        {posts.map((p) => (
+          <li>
+            <a class="entry" href={`/posts/${p.id}/`}>
+              <span class="mark"><Rosette seed={p.id} form={p.data.flower} detail="small" vt={`r-${p.id}`} /></span>
+              <span class="entry-text">
+                <span class="entry-title">
+                  <span class="t sc">{p.data.title}</span>
+                  <span class="leader" aria-hidden="true"></span>
+                  <time class="d" datetime={p.data.date.toISOString()}>{fmt(p.data.date)}</time>
+                </span>
+                <span class="entry-sum">{p.data.summary}{p.data.status === 'in-progress' && <> <em class="wip">Still in progress.</em></>}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <section id="colophon" class="colophon" aria-labelledby="col">
+      <h2 id="col" class="sc">Colophon</h2>
+      <p>
+        I work across the whole stack and like it best where design and engineering meet.
+      </p>
+      <p class="set">
+        Set in EB Garamond, in roman, italic and small capitals, and printed in two inks: a brown-black for the
+        text and ultramarine for the rubrics. Each rosette is engraved by code from the name of its project, so no
+        two are alike. Built with Astro.
+      </p>
+      <p class="links">
+        <a class="sc" href="https://github.com/ahmadanwar93" rel="me noopener">GitHub</a>
+        <span aria-hidden="true" class="dot"></span>
+        <a class="sc" href="https://www.linkedin.com/in/afaw/" rel="me noopener">LinkedIn</a>
+      </p>
+    </section>
+  </main>
+</Press>
+
+<style>
+  main { padding: 0 var(--gutter); }
+
+  /* ——— title page ——— */
+  .title-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: calc(100svh - 72px);
+    padding-top: clamp(40px, 9vh, 104px);
+    text-align: center;
+  }
+  .title-page :global(.frontis) { margin-bottom: clamp(28px, 4.5vh, 48px); }
+  .name {
+    margin: 0;
+    font-size: clamp(3.25rem, 2rem + 5.2vw, 6rem);
+    line-height: 1;
+    letter-spacing: 0.24em;
+    margin-right: -0.24em; /* optical centring of the tracked word */
+    font-weight: 400;
+  }
+  .sub {
+    margin: 0.9em 0 0;
+    font-size: clamp(1.0625rem, 0.98rem + 0.3vw, 1.25rem);
+    letter-spacing: 0.2em;
+  }
+  .opening {
+    max-width: var(--measure);
+    margin: clamp(36px, 6vh, 64px) 0 0;
+    text-align: justify;
+    text-align-last: left;
+    hyphens: auto;
+  }
+  .opening::first-letter {
+    color: var(--rubric);
+    initial-letter: 2;
+    -webkit-initial-letter: 2;
+    margin-right: 0.14em;
+  }
+
+  /* ——— contents ——— */
+  .contents, .colophon { max-width: 46rem; margin: clamp(96px, 14vw, 168px) auto 0; }
+  .section-head { text-align: center; margin-bottom: clamp(32px, 5vw, 56px); }
+  h2 {
+    margin: 0;
+    font-size: clamp(1.25rem, 1.1rem + 0.6vw, 1.625rem);
+    letter-spacing: 0.3em;
+    text-align: center;
+  }
+  ol { margin: 0; padding: 0; list-style: none; }
+  li + li { margin-top: clamp(22px, 3vw, 34px); }
+  .entry {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: clamp(16px, 2.6vw, 28px);
+    align-items: start;
+    text-decoration: none;
+  }
+  .mark { padding-top: 0.15em; }
+  .mark :global(.rosette) { transition: transform 1.1s var(--ease); }
+  .entry:hover .mark :global(.rosette),
+  .entry:focus-visible .mark :global(.rosette) { transform: rotate(24deg) scale(1.12); }
+  .entry-title { display: flex; align-items: baseline; gap: 12px; }
+  .t { font-size: 1.125em; letter-spacing: 0.1em; transition: color 0.3s var(--ease); }
+  .entry:hover .t { color: var(--rubric); }
+  .leader {
+    flex: 1;
+    min-width: 24px;
+    height: 0.2em;
+    background: radial-gradient(circle, var(--ink-3) 0.9px, transparent 1.2px) 0 50% / 9px 100% repeat-x;
+    transform: translateY(-0.12em);
+  }
+  .d { font-style: italic; color: var(--ink-2); white-space: nowrap; }
+  .entry-sum { display: block; margin-top: 4px; color: var(--ink-2); font-size: 0.9375em; line-height: 1.45; max-width: 34em; }
+  .wip { color: var(--rubric); }
+
+  /* ——— colophon ——— */
+  .colophon { text-align: center; max-width: 34rem; }
+  .colophon h2 { margin-bottom: 28px; }
+  .colophon p { margin: 0 0 1em; }
+  .set { font-style: italic; color: var(--ink-2); }
+  .links { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 28px !important; }
+  .links a { text-decoration: none; letter-spacing: 0.16em; }
+  .dot { width: 5px; height: 5px; background: var(--rubric); transform: rotate(45deg); }
+
+  @media (max-width: 640px) {
+    .title-page { min-height: 0; }
+    .entry { grid-template-columns: 40px minmax(0, 1fr); }
+    .entry-title { flex-wrap: wrap; column-gap: 10px; row-gap: 0; }
+    .leader { display: none; }
+    .d { flex-basis: 100%; font-size: 0.9375em; }
+    .opening { text-align: left; }
+  }
+</style>

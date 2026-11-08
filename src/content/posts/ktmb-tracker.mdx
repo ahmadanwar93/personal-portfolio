@@ -1,0 +1,45 @@
+---
+title: KTMB Tracker
+date: 2025-11-26
+summary: Live KTMB train positions on a map, decoded from a GTFS Realtime feed of protocol buffers.
+kind: build
+cover: ../../assets/posts/ktmb-tracker/tracker-frame-2.jpeg
+coverAlt: Map of Peninsular Malaysia with live train markers and an open popup showing route, next stop and speed.
+stack: [React, TypeScript, Vite, Tailwind, Leaflet, protobufjs, PapaParse]
+links:
+  - { label: Live tracker, href: 'https://ktmb-tracker.vercel.app/' }
+  - { label: Frontend repo, href: 'https://github.com/ahmadanwar93/ktmb-tracker' }
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import tracker from '../../assets/posts/ktmb-tracker/tracker-frame-2.jpeg';
+
+A real-time tracker for KTMB (Keretapi Tanah Melayu Berhad) trains. Every train that reports its position shows up on an interactive map, and clicking one tells you its route, next stop and speed <Ref n={1} />.
+
+<Fig n={1} src={tracker} alt="Map of Peninsular Malaysia with live train markers and an open popup showing route, next stop and speed." size="square">
+  A train on the Padang Besar to Gemas electric service, with its next stop and last update time.
+</Fig>
+
+## How it works
+
+The live data comes from the GTFS Realtime API, which sends vehicle positions as Protocol Buffers, a compact binary format rather than JSON. The app loads the GTFS Realtime schema into a protobuf decoder and turns that binary into readable vehicle records.
+
+Positions alone are thin: a vehicle ID and some coordinates. So each point is enriched with the GTFS Static data (routes, stops and trips, parsed from CSV) before it lands on the map <Ref n={1} />.
+
+## Stack
+
+- React with TypeScript, built with Vite
+- Tailwind for styling
+- Leaflet for the map
+- protobufjs to decode the realtime feed
+- PapaParse to read the static GTFS files
+
+## What’s next
+
+- Status for each train (on time, delayed, cancelled) worked out from how closely it keeps to its schedule.
+- A GitHub Action that rebuilds the app whenever the static data is refreshed each day.
+
+## Resources
+
+- [GTFS Realtime API documentation](https://developer.data.gov.my/realtime-api/gtfs-realtime)
+- [GTFS Static API documentation](https://developer.data.gov.my/realtime-api/gtfs-static)

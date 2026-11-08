@@ -1,0 +1,114 @@
+/* The formal edition: a private-press book. Loaded only by the Press layout. */
+@import '@fontsource/eb-garamond/400.css';
+@import '@fontsource/eb-garamond/400-italic.css';
+@import '@fontsource/eb-garamond/500.css';
+@import '@fontsource/eb-garamond/600.css';
+@import '@fontsource-variable/jetbrains-mono/wght.css';
+
+@view-transition { navigation: auto; }
+
+:root {
+  /* rag-white paper: neutral, never cream */
+  --paper: #f1f1ed;
+  --paper-deep: #e6e6e0;
+  --ink: #1b1815;
+  --ink-2: #3b3732; /* secondary text, 10:1 on paper */
+  --ink-3: #5d5850; /* tertiary, 6.3:1 */
+  --rubric: #2a3a8e; /* ultramarine second ink, 8.9:1 */
+  --rule: #1b1815;
+
+  --f-book: 'EB Garamond', 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
+  --f-code: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --text: clamp(1.1875rem, 1.06rem + 0.42vw, 1.375rem);
+  --lead: 1.56;
+  --measure: 31em;
+  --gutter: clamp(20px, 5vw, 64px);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* paper fibre, multiplied over the ground */
+  --fibre: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .28 0 0 0 0 .27 0 0 0 0 .25 0 0 0 -1.15 .62'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23f)'/%3E%3C/svg%3E");
+  /* ink starvation: small voids where the ink did not take */
+  --voids: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.05' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -7 0 0 0 5.6'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background-color: var(--paper);
+  background-image: var(--fibre);
+  background-size: 220px 220px;
+  background-blend-mode: multiply;
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--ink-3) var(--paper-deep);
+  scrollbar-width: thin;
+}
+body {
+  margin: 0;
+  font-family: var(--f-book);
+  font-size: var(--text);
+  line-height: var(--lead);
+  font-variant-numeric: oldstyle-nums proportional-nums;
+  font-kerning: normal;
+  font-feature-settings: 'liga', 'kern';
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: var(--rubric); color: var(--paper); }
+:focus-visible { outline: 1.5px solid var(--rubric); outline-offset: 4px; }
+
+a { color: inherit; text-decoration-line: underline; text-decoration-thickness: 0.5px; text-underline-offset: 0.2em; text-decoration-color: var(--ink-3); }
+a:hover { color: var(--rubric); text-decoration-color: currentColor; }
+img { display: block; max-width: 100%; height: auto; }
+h1, h2, h3 { text-wrap: balance; font-weight: 400; }
+p { text-wrap: pretty; hyphens: auto; }
+
+.sc { font-variant-caps: all-small-caps; letter-spacing: 0.12em; font-variant-numeric: lining-nums; }
+.caps { text-transform: uppercase; letter-spacing: 0.2em; }
+.rubric { color: var(--rubric); }
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ——— the press: ink that bit into the paper ——— */
+.inked {
+  -webkit-mask-image: var(--voids);
+  mask-image: var(--voids);
+  -webkit-mask-size: 160px;
+  mask-size: 160px;
+  filter: url(#press);
+}
+/* faint deboss: a lit lower lip and a shaded upper edge */
+.debossed {
+  text-shadow: 0 0.06em 0 rgb(255 255 255 / 0.55), 0 -0.02em 0 rgb(27 24 21 / 0.18);
+}
+
+/* ——— rosettes ——— */
+.rosette { display: block; overflow: visible; }
+.rosette path { fill: none; stroke: var(--rubric); vector-effect: non-scaling-stroke; }
+.rosette .r-outer path { stroke-width: 0.55px; }
+.rosette .r-inner path { stroke-width: 0.9px; }
+.rosette .r-eye { fill: var(--rubric); }
+.rosette { -webkit-mask-image: var(--voids); mask-image: var(--voids); -webkit-mask-size: 120px; mask-size: 120px; filter: url(#press); }
+
+/* the print: lines start as a blind impression and take ink in sequence */
+.rosette.is-printing path {
+  animation: take-ink 1.4s var(--ease) both;
+  animation-delay: calc(var(--i) * 70ms + 200ms);
+}
+.rosette.is-printing .r-eye { animation: take-ink 1s var(--ease) both; animation-delay: 1.3s; }
+@keyframes take-ink {
+  from { stroke: rgb(27 24 21 / 0.16); stroke-width: 0.3px; fill-opacity: 0.1; }
+}
+
+/* printer's rule */
+.rule { height: 0; border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rosette.is-printing path, .rosette.is-printing .r-eye { animation: none; }
+  @view-transition { navigation: none; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+}

@@ -1,0 +1,250 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import Press from '../../layouts/Press.astro';
+import Rosette from '../../components/press/Rosette.astro';
+
+export async function getStaticPaths() {
+  const posts = (await getCollection('posts')).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+  return posts.map((post, i) => ({ params: { slug: post.id }, props: { post, newer: posts[i - 1], older: posts[i + 1] } }));
+}
+
+interface Props { post: CollectionEntry<'posts'>; newer?: CollectionEntry<'posts'>; older?: CollectionEntry<'posts'> }
+const { post, newer, older } = Astro.props;
+const { Content } = await render(post);
+const d = post.data;
+const fmt = (x: Date) => x.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+---
+<Press title={`${d.title} · Fikri`} description={d.summary} running={d.title}>
+  <main class="chapter-wrap">
+    <header class="chapter-head">
+      <Rosette seed={post.id} form={d.flower} vt={`r-${post.id}`} size="clamp(120px, 15vw, 180px)" print />
+      <p class="date"><time datetime={d.date.toISOString()}>{fmt(d.date)}</time></p>
+      <h1 class="caps inked debossed">{d.title}</h1>
+      <p class="dek">{d.summary}</p>
+      <p class="meta sc">
+        <span>{d.kind === 'build' ? 'A build' : 'A visual study'}</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>{d.status === 'in-progress' ? 'In progress' : 'Shipped'}</span>
+      </p>
+      {d.stack.length > 0 && <p class="stack sc">{d.stack.join(' · ')}</p>}
+      {d.links.length > 0 && (
+        <p class="links">
+          {d.links.map((l) => <a class="sc" href={l.href} rel="noopener">{l.label}</a>)}
+        </p>
+      )}
+    </header>
+
+    <article class="chapter">
+      <Content />
+    </article>
+
+    <nav class="turn" aria-label="More chapters">
+      {older ? (
+        <a href={`/posts/${older.id}/`} class="turn-link">
+          <span class="sc">Earlier</span>
+          <span class="turn-t">{older.data.title}</span>
+        </a>
+      ) : <a href="/#contents" class="turn-link"><span class="sc">Back to</span><span class="turn-t">Contents</span></a>}
+      <span class="turn-mark"><Rosette seed={post.id + '-tail'} detail="small" size="34px" /></span>
+      {newer ? (
+        <a href={`/posts/${newer.id}/`} class="turn-link next">
+          <span class="sc">Later</span>
+          <span class="turn-t">{newer.data.title}</span>
+        </a>
+      ) : <a href="/#contents" class="turn-link next"><span class="sc">Back to</span><span class="turn-t">Contents</span></a>}
+    </nav>
+  </main>
+</Press>
+
+<style>
+  .chapter-wrap { padding: 0 var(--gutter); }
+
+  .chapter-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 44rem;
+    margin: clamp(48px, 9vw, 112px) auto 0;
+    text-align: center;
+  }
+  .date { margin: clamp(24px, 3vw, 36px) 0 0; font-style: italic; color: var(--ink-2); }
+  h1 {
+    margin: 0.35em 0 0;
+    font-size: clamp(2.125rem, 1.4rem + 3vw, 3.75rem);
+    line-height: 1.08;
+    letter-spacing: 0.16em;
+    margin-right: -0.16em;
+  }
+  .dek { margin: 0.9em 0 0; font-size: 1.125em; line-height: 1.45; font-style: italic; color: var(--ink-2); max-width: 30em; }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px 14px;
+    margin: 1.8em 0 0;
+    font-size: 0.9375em;
+    color: var(--ink-2);
+  }
+  .sep { width: 4px; height: 4px; background: var(--rubric); transform: rotate(45deg); }
+  .stack { margin: 0.4em 0 0; max-width: 34em; font-size: 0.875em; letter-spacing: 0.1em; color: var(--ink-3); line-height: 1.6; }
+  .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 26px; margin: 1em 0 0; }
+  .links a { color: var(--rubric); text-decoration-color: currentColor; letter-spacing: 0.12em; }
+
+  /* ——— the chapter text ——— */
+  .chapter { margin-top: clamp(56px, 8vw, 96px); }
+  .chapter > :global(*) { max-width: var(--measure); margin-inline: auto; }
+  .chapter > :global(p) { margin-block: 0; }
+  .chapter > :global(p + p) { text-indent: 1.4em; }
+  @media (min-width: 720px) {
+    .chapter > :global(p) { text-align: justify; hyphens: auto; }
+  }
+
+  /* the opening paragraph: rubric initial and small-capital lead-in */
+  .chapter > :global(p:first-child::first-letter) {
+    color: var(--rubric);
+    initial-letter: 3;
+    -webkit-initial-letter: 3;
+    margin-right: 0.12em;
+    font-weight: 400;
+  }
+  .chapter > :global(p:first-child) { text-align: left; }
+  .chapter > :global(p:first-child::first-line) { font-variant-caps: small-caps; letter-spacing: 0.02em; }
+
+  .chapter :global(h2) {
+    margin-top: 2.6em;
+    margin-bottom: 1em;
+    font-size: 1em;
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.22em;
+    text-align: center;
+    color: var(--rubric);
+  }
+  .chapter :global(h2 + p) { text-indent: 0 !important; }
+  .chapter :global(h3) { margin: 2em auto 0.4em; font-size: 1em; font-style: italic; }
+
+  .chapter :global(ul) { padding: 0; list-style: none; margin-block: 0.8em; }
+  .chapter :global(ul li) { position: relative; padding-left: 1.5em; margin-block: 0.3em; text-align: left; }
+  .chapter :global(ul li::before) {
+    content: '';
+    position: absolute;
+    left: 0.25em;
+    top: 0.68em;
+    width: 5px;
+    height: 5px;
+    background: var(--rubric);
+    transform: rotate(45deg);
+  }
+  .chapter :global(strong) { font-weight: 600; }
+  .chapter :global(em) { font-style: italic; }
+  .chapter :global(a:not(.ref)) { text-decoration-color: var(--rubric); }
+
+  .chapter :global(:not(pre) > code) {
+    font-family: var(--f-code);
+    font-size: 0.74em;
+    padding: 0.08em 0.3em;
+    background: rgb(27 24 21 / 0.05);
+    border-radius: 2px;
+    font-variant-numeric: normal;
+  }
+  .chapter :global(pre) {
+    max-width: min(40rem, 100%) !important;
+    margin-block: 1.8em;
+    padding: 1.2em 0;
+    border-top: 1px solid var(--ink-3);
+    border-bottom: 1px solid var(--ink-3);
+    background: transparent !important;
+    font-family: var(--f-code);
+    font-size: 0.8125rem;
+    line-height: 1.75;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .chapter :global(pre code) { font-family: inherit; }
+  /* two inks only: code prints in text ink, with no syntax rainbow */
+  .chapter :global(pre span) { color: var(--ink) !important; }
+
+  /* figures as plates */
+  .chapter :global(.fig) { margin-block: 2.4em; }
+  .chapter :global(.fig--wide) { max-width: min(62rem, 100%) !important; }
+  .chapter :global(.fig--column), .chapter :global(.fig--square) { max-width: min(40rem, 100%) !important; }
+  .chapter :global(.fig .frame) {
+    padding: 0;
+    background: #fff;
+    box-shadow: 0 0 0 1px var(--ink-3), 0 1px 0 1px rgb(255 255 255 / 0.6);
+    transition: box-shadow 0.5s var(--ease);
+  }
+  .chapter :global(.fig img) { width: 100%; height: auto; mix-blend-mode: multiply; }
+  .chapter :global(.fig figcaption) {
+    margin: 0.9em auto 0;
+    max-width: 30em;
+    text-align: center;
+    font-style: italic;
+    font-size: 0.9375em;
+    line-height: 1.45;
+    color: var(--ink-2);
+  }
+  .chapter :global(.fig figcaption p) { display: inline; margin: 0; text-indent: 0; }
+  .chapter :global(.fig-n) {
+    font-style: normal;
+    font-variant-caps: all-small-caps;
+    text-transform: none;
+    letter-spacing: 0.16em;
+    color: var(--rubric);
+    margin-right: 0.5em;
+  }
+  .chapter :global(.fig.is-lit .frame) { box-shadow: 0 0 0 2px var(--rubric); }
+
+  .chapter :global(.ref) {
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.1em;
+    color: var(--rubric);
+    text-decoration: underline dotted;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.22em;
+    white-space: nowrap;
+  }
+  .chapter :global(.ref-box) { display: none; }
+  .chapter :global(.ref:hover), .chapter :global(.ref.is-lit) { text-decoration-style: solid; }
+
+  /* ——— turning the page ——— */
+  .turn {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    gap: 24px;
+    max-width: 44rem;
+    margin: clamp(88px, 12vw, 140px) auto 0;
+  }
+  .turn-link { display: flex; flex-direction: column; gap: 2px; text-decoration: none; }
+  .turn-link.next { text-align: right; align-items: flex-end; }
+  .turn-link .sc { color: var(--ink-3); font-size: 0.875em; letter-spacing: 0.16em; }
+  .turn-t { font-style: italic; font-size: 1.0625em; }
+  .turn-link:hover .turn-t { color: var(--rubric); }
+
+  @media (max-width: 640px) {
+    .turn { grid-template-columns: 1fr 1fr; }
+    .turn-mark { display: none; }
+  }
+</style>
+
+<script>
+  function wire() {
+    const refs = [...document.querySelectorAll<HTMLAnchorElement>('.ref[data-ref]')];
+    const figs = new Map([...document.querySelectorAll<HTMLElement>('.fig[data-fig]')].map((f) => [f.dataset.fig!, f]));
+    const light = (n: string, on: boolean) => {
+      figs.get(n)?.classList.toggle('is-lit', on);
+      refs.forEach((r) => r.dataset.ref === n && r.classList.toggle('is-lit', on));
+    };
+    for (const r of refs) {
+      const n = r.dataset.ref!;
+      for (const [ev, on] of [['pointerenter', true], ['pointerleave', false], ['focus', true], ['blur', false]] as const)
+        r.addEventListener(ev, () => light(n, on));
+    }
+    for (const [n, f] of figs) {
+      f.addEventListener('pointerenter', () => light(n, true));
+      f.addEventListener('pointerleave', () => light(n, false));
+    }
+  }
+  wire();
+</script>

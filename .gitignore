@@ -1,0 +1,22 @@
+# build output & caches
+node_modules/
+dist/
+.astro/
+
+# OS / editor
+.DS_Store
+.vscode/
+*.log
+
+# env
+.env
+.env.*
+
+# Claude Code (local settings hold personal paths and permissions)
+.claude/
+
+# Impeccable working files (screenshots, mocks, archives)
+.impeccable/config.local.json
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/archive/

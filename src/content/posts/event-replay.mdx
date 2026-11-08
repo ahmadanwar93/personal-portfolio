@@ -1,0 +1,44 @@
+---
+title: Event Replay
+date: 2025-11-24
+summary: A small order system for learning event-driven architecture, and how to replay events safely when a listener fails.
+kind: build
+cover: ../../assets/posts/event-replay/mermaid-framed.jpg
+coverAlt: Diagram of an OrderPlaced event fanning out to four listeners.
+stack: [Laravel, Pest]
+links:
+  - { label: Backend repo, href: 'https://github.com/ahmadanwar93/event-replay-simple' }
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import diagram from '../../assets/posts/event-replay/mermaid-diagram.png';
+
+I built a simple order management system to learn two things properly: event-driven architecture, and event replay.
+
+## What happens when an order comes in
+
+An order arrives through the API and fires a single `OrderPlaced` event. Four listeners pick it up and each does its own job <Ref n={1} />.
+
+<Fig n={1} src={diagram} alt="Flow diagram: an API request creates an order, which fires OrderPlaced; four listeners handle it and write to their own tables." size="wide">
+  One event, four listeners. Every listener checks whether it has already done its work before doing it again.
+</Fig>
+
+The interesting part is what happens when one of those listeners fails. Every event is stored, so it can be replayed to run all the listeners again. That only works if running a listener twice is harmless, so each `handle` method starts with an idempotency check that skips work already done.
+
+All of this is covered by Pest tests in the `OrderTest` file.
+
+## Where the truth lives
+
+Right now the regular tables are the source of truth:
+
+- `orders`: the current state of each order
+- `inventory`: current stock levels
+- `email_logs`: which emails were sent
+- `notifications`: which notifications exist
+
+The `domain_events` table is only used as an audit trail and for replays <Ref n={1} />.
+
+## What’s next
+
+- More event types than just `OrderPlaced`, such as `OrderShipped` and `OrderCancelled`.
+- Proper event sourcing, where the event store is the single source of truth and the current state is rebuilt by replaying events, instead of the other way round.

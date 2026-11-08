@@ -1,0 +1,6 @@
+---
+/** Inline link from running text to a figure; hovering either lights up the other. */
+interface Props { n: number }
+const { n } = Astro.props;
+---
+<a class="ref" href={`#fig-${n}`} data-ref={n}><span class="ref-box" aria-hidden="true"></span>fig.&nbsp;{n}</a>
