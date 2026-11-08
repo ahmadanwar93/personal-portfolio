@@ -12,6 +12,7 @@ interface Props { post: CollectionEntry<'posts'>; newer?: CollectionEntry<'posts
 const { post, newer, older } = Astro.props;
 const { Content } = await render(post);
 const d = post.data;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const fmt = (x: Date) => x.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 ---
 <Press title={`${d.title} · Fikri`} description={d.summary} running={d.title}>
@@ -40,18 +41,18 @@ const fmt = (x: Date) => x.toLocaleDateString('en-GB', { day: 'numeric', month: 
 
     <nav class="turn" aria-label="More chapters">
       {older ? (
-        <a href={`/posts/${older.id}/`} class="turn-link">
+        <a href={`${base}/posts/${older.id}/`} class="turn-link">
           <span class="sc">Earlier</span>
           <span class="turn-t">{older.data.title}</span>
         </a>
-      ) : <a href="/#contents" class="turn-link"><span class="sc">Back to</span><span class="turn-t">Contents</span></a>}
+      ) : <a href={`${base}/#contents`} class="turn-link"><span class="sc">Back to</span><span class="turn-t">Contents</span></a>}
       <span class="turn-mark"><Rosette seed={post.id + '-tail'} detail="small" size="34px" /></span>
       {newer ? (
-        <a href={`/posts/${newer.id}/`} class="turn-link next">
+        <a href={`${base}/posts/${newer.id}/`} class="turn-link next">
           <span class="sc">Later</span>
           <span class="turn-t">{newer.data.title}</span>
         </a>
-      ) : <a href="/#contents" class="turn-link next"><span class="sc">Back to</span><span class="turn-t">Contents</span></a>}
+      ) : <a href={`${base}/#contents`} class="turn-link next"><span class="sc">Back to</span><span class="turn-t">Contents</span></a>}
     </nav>
   </main>
 </Press>
