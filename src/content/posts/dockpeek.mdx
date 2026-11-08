@@ -1,0 +1,60 @@
+---
+title: Dockpeek
+date: 2026-11-08
+summary: A tiny Go tool that talks to the Docker daemon straight over its Unix socket, built to learn Go coming from PHP.
+kind: build
+status: in-progress
+cover: ../../assets/posts/dockpeek/cover.png
+coverAlt: Terminal showing docker ps and then dockpeek, both listing the same busybox container called peek-demo, with dockpeek printing fewer columns.
+stack: [Go, Docker Engine API, Colima]
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import psCompare from '../../assets/posts/dockpeek/cover.png';
+
+I come from PHP and Laravel, and I needed to pick up Go for work. Reading tutorials wasn’t sticking, so I picked a project instead: rebuild a small part of `docker ps` without the Docker SDK, by talking to the Docker daemon myself.
+
+The surprise that made it worth doing: the Docker daemon is just an HTTP server. It doesn’t listen on a port, though. It listens on a file.
+
+## What it does
+
+`dockpeek` asks the daemon for its containers and prints them as a table, like `docker ps` <Ref n={1} />. That’s it. It’s read-only, with no write operations and no remote daemons.
+
+<Fig n={1} src={psCompare} alt="Terminal showing docker ps and then dockpeek, both listing the same busybox container called peek-demo, with dockpeek printing fewer columns." size="wide">
+  The real `docker ps` on top, dockpeek below. Same container, fewer columns.
+</Fig>
+
+## The socket trick
+
+The daemon’s address is a Unix socket, a file path (mine is under Colima, since I use it instead of Docker Desktop). Go’s default HTTP client only dials TCP, so my first request failed exactly as expected:
+
+```
+dial tcp [::1]:80: connect: connection refused
+```
+
+The fix is to give the HTTP transport a custom dial function that ignores the URL’s host and port and opens the socket instead:
+
+```go
+DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+	var d net.Dialer
+	return d.DialContext(ctx, "unix", socketPath)
+},
+```
+
+Once I understood that HTTP is the language and TCP or a socket is only the pipe, a lot clicked. It also explained something odd: I replaced `localhost` with `banana` in the URL and nothing broke, because the host was never used to connect. The socket path decides where the request goes.
+
+{/* FIG 2: diagram of client -> transport -> unix socket -> daemon, see shot list */}
+
+## Go habits I had to unlearn
+
+- **No try/catch.** Errors are returned values. A helper wraps the error with context and returns it, and only `main` prints it and exits. It’s the Laravel exception handler idea, written out by hand.
+- **A 404 is not an error.** Go only sets `err` when no answer came back at all. If the daemon answers “no”, you have to check the status code yourself.
+- **Structs with tags.** In PHP, `json_decode` gives you a loose array. In Go you describe the shape first, as a struct, and the decoder fills it in or returns an error.
+
+## What broke
+
+Docker Desktop wasn’t running, and `/var/run/docker.sock` was a symlink pointing at another user’s home folder. Switching to Colima fixed that. Then `docker run` failed on a stale `credsStore` entry in `~/.docker/config.json`, pointing at a credential helper that no longer existed. Removing that line fixed it.
+
+## What’s next
+
+I’m stopping at `ps` for now. The original plan also had `inspect`, streaming `logs` (which come back in an 8-byte-framed binary format) and a comparison with the official SDK. I’d like to come back for `logs`, since that’s the part with the most to learn.
