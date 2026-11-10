@@ -1,0 +1,111 @@
+---
+title: HTTP Caching in Go
+date: 2026-11-10
+summary: A tiny Go server for seeing HTTP caching happen, from Cache-Control freshness to ETag and 304, with no CDN needed.
+kind: build
+cover: ../../assets/posts/http-caching-go/cover.jpg
+coverAlt: Flow diagram split into client and server. A request either goes to a full fetch (A), a revalidation with If-None-Match that returns a 304 (B), or is served from the stored copy with no request sent (C).
+stack: [Go, net/http, curl, Chrome DevTools]
+---
+I work in Laravel all day, where caching headers mostly arrive through middleware and I never see what they do. I was studying for AWS SAA-C03, where CloudFront caching is on the syllabus, and I wanted to understand it properly without a CDN account. So I wrote a small Go server on localhost and watched the browser and `curl` react to it.
+
+## The mental model
+
+There are two different questions a cache can ask.
+
+- **Freshness:** is my stored copy still good? The client answers this itself, using the clock and `Cache-Control: max-age`. No request is sent, and the copy may be stale.
+- **Validation:** is my stored copy still the same as yours? The client asks the server with `If-None-Match`, and the server answers `304 Not Modified` with no body if the `ETag` still matches.
+
+Everything else is a variation on those two. A request ends up on one of three paths: **[A]** a full fetch, **[B]** a revalidation that returns a `304` with no body, or **[C]** a fresh hit that never leaves the client. The `│` is the network: anything that crosses it costs a round trip.
+
+```text
+CLIENT                  │ SERVER
+────────────────────────┼─────────────────
+GET /x requested        │
+  │                     │
+  ▼                     │
+Copy stored? ──no───────┼─► [A] plain GET
+  │yes                  │      │
+  ▼                     │      ▼
+no-cache? ──yes──┐      │   200 + body
+  │no            │      │   + ETag, CC
+  ▼              │      │      │
+Fresh? ──no──┐   │      │      ▼
+  │yes       ▼   ▼      │   (client stores
+  │     Has ETag?       │    if allowed)
+  │      │yes  │no      │
+  │      │     └────────┼─► [A]
+  │      ▼              │
+  │   [B] GET +         │
+  │   If-None-Match ────┼─► ETag matches?
+  │                     │    │yes     │no
+  │                     │    ▼        ▼
+  │   reuse copy ◄──────┼─── 304     200 + new
+  │                     │    no body  body+ETag
+  ▼                     │
+[C] use copy            │
+NO request sent         │
+```
+
+I used this diagram to predict what each route would do before I ran it, and every path in it showed up in my tests below, apart from one case: a copy that expires and then revalidates with an `ETag` (I did not test `max-age` and an `ETag` together).
+
+## Four routes for freshness
+
+One handler factory, `withCache`, takes a `Cache-Control` value and returns a handler that logs `HIT SERVER` and writes the current time. The log line is the whole trick: if it prints, a request reached the server, and if it does not, a cache answered.
+
+```go
+func withCache(cc string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("HIT SERVER: %s %s", r.Method, r.URL.Path)
+		w.Header().Set("Cache-Control", cc)
+		fmt.Fprintln(w, time.Now().Format(time.RFC3339Nano))
+	}
+}
+```
+
+I registered it four times: `no-store`, `no-cache`, `max-age=30` and `max-age=31536000, immutable`. Two things surprised me.
+
+- **`no-cache` and `no-store` look identical without a validator.** `no-cache` means store it but always revalidate, and with no `ETag` there is nothing to revalidate with, so every request is a full fetch either way.
+- **A `200` in DevTools does not mean a request was made.** For a cached response it shows the status of the stored copy. The reliable signals are the Size column (`(disk cache)` means no network), the server log, and the timing. A `304`, on the other hand, always means a real request went out.
+
+## ETag and 304
+
+For `/api/products` I hashed the JSON body with SHA-256, kept the first 8 bytes as hex, and used that as the `ETag`. If `If-None-Match` equals it, the handler sends a `304` and no body.
+
+```go
+sum := sha256.Sum256(body)
+etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+
+w.Header().Set("Cache-Control", "no-cache")
+w.Header().Set("ETag", etag)
+
+if r.Header.Get("If-None-Match") == etag {
+	w.WriteHeader(http.StatusNotModified)
+	return
+}
+w.Write(body)
+```
+
+I checked it three ways:
+
+- `curl` returned `200` with the `ETag`, then `304` with no body when I sent it back.
+- The browser showed `304` for the same route.
+- After changing a product price, the old `ETag` got a `200` and a new `ETag`.
+
+The catch is that a hash only works if the bytes are deterministic. Imagine the response included a `served_at: time.Now()` field. The body would differ on every request, so would the hash, so the `ETag` would never match and the `304` rate drops to zero. `no-cache` stays correct but stops being useful.
+
+A hash `ETag` also still builds the whole body before it can decide to throw it away. It saves bandwidth, not work. That trade-off is the reason to prefer a version number or `updated_at` as the validator when the body is expensive.
+
+## Laravel, for comparison
+
+The `cache.headers` middleware with the `etag` option does the hash version: it takes an md5 of the finished body. Its default is `no-cache, private`. `setEtag()` and `isNotModified()` on the response are the manual route, and calling `isNotModified()` before the heavy query is how you would skip the work.
+
+## What’s next
+
+I stopped here to keep the scope honest. Not covered yet, and not claimed above:
+
+- A freshness window combined with an `ETag` (`max-age` that expires into a `304`).
+- A version-counter validator that skips building the body, with a mutex around the shared state.
+- `Last-Modified` and `If-Modified-Since`, the date-based twin of `ETag`.
+- `Vary` and per-variant `ETag`s, and `private` versus `public` for per-user responses.
+- Putting nginx `proxy_cache` in front, then mapping all of it to CloudFront TTLs and cache policies.
