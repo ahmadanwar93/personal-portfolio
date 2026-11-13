@@ -1,0 +1,114 @@
+---
+title: Asset Pipeline by Hand
+date: 2026-11-13
+summary: "A small site pushed through minify, bundle, hash and compress by hand, then served with cache headers, to see what Vite does behind @vite()."
+kind: build
+cover: ../../assets/posts/asset-pipeline/cover.png
+coverAlt: DevTools headers panel for a hashed CSS file, showing status 200 OK from memory cache, Cache-Control public, max-age=31536000, immutable, and Content-Encoding br.
+stack: [Node, esbuild, Lightning CSS, curl, Chrome DevTools]
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import networkReload from '../../assets/posts/asset-pipeline/network-reload.png';
+import afterChange from '../../assets/posts/asset-pipeline/after-change.png';
+import index304 from '../../assets/posts/asset-pipeline/index-304.png';
+
+I wanted to know what tools like Vite actually do behind `@vite()`, so I built the pipeline by hand: minify, bundle, hash the file names, compress, then serve the result with cache headers and watch the browser react. The site is tiny on purpose, which means every step has a number or a header I can check.
+
+## A site built to be awkward
+
+Three CSS files, two JS modules and an `index.html`. The CSS is deliberately hostile: `calc(1px + 2px)`, `url("a b.png")`, a `.card :hover` selector with a space in it, and a string that contains `/* not a comment */`. One JS module exports a function nobody calls. The raw CSS files are 189, 130 and 131 bytes.
+
+## Why not just regex?
+
+My first minifier was three regex steps: strip comments, collapse whitespace, trim spaces around `{ } : ; , +`. It broke three things.
+
+- `calc(1px + 2px)` became `calc(1px+2px)`, which is invalid CSS.
+- `content: "/* not a comment */"` became `content:""`, because the comment rule cannot tell a string from a comment.
+- `.card :hover` became `.card:hover`, which silently changes what the selector matches.
+
+`url("a b.png")` only survived because it has a single space. Whitespace and punctuation mean different things in different places, and only code that tracks context, a tokenizer, can tell them apart.
+
+## Real minify and bundle
+
+Lightning CSS for the CSS, esbuild for the JS:
+
+```bash
+npx lightningcss --minify --bundle src/base.css -o dist/app.css
+npx esbuild src/main.js --bundle --minify --outfile=dist/app.js
+```
+
+Lightning CSS wants one entry file, so `base.css` now starts with two `@import` lines. The results:
+
+- CSS went from 494 to 252 bytes (about 49% smaller), JS from 312 to 107 bytes (about 66%).
+- `calc(1px + 2px)` became `padding:3px`, while `.card :hover` kept its space and the comment-looking string survived.
+- The unused export is gone. `grep` finds `neverCalled` zero times in the output. esbuild also renamed `greet` to `e` and wrapped everything in a function.
+
+One surprise: the rules from `layout.css` and `theme.css` come out before the rules in `base.css`, because `@import` is inlined where it is declared.
+
+Tree shaking works because `import { x }` is static: a literal path, at the top level, with names. The bundler can read what is used from the source text. `require()` is a function call that runs at runtime, so a bundler has to keep everything to be safe.
+
+## Names that change with the content
+
+Minifying makes a file small. It does not make it safe to cache. If the name never changes, a long `max-age` leaves people on old code, and a short one means everyone downloads it again. So `build.js` hashes each output and puts the hash in the file name:
+
+```js
+const content = fs.readFileSync(filePath);
+const hash = crypto.createHash("sha256").update(content).digest("hex").slice(0, 8);
+const hashed = `${name}-${hash}${ext}`;
+fs.renameSync(filePath, path.join(DIST, hashed));
+manifest[file] = hashed;
+```
+
+The hash is of the final minified bytes, since that is what the browser receives. The script then writes `manifest.json`, which maps `app.css` to its hashed name, and generates `dist/index.html` from `src/index.html` with the hashed names swapped in. That is the same job `@vite()` does with `public/build/manifest.json`.
+
+I rebuilt four times to check it behaved:
+
+- Changing a colour in `layout.css` changed only the CSS hash (`app-2cb2bd01.css` to `app-428e9d43.css`).
+- Changing the greeting in `utils.js` changed only the JS hash (`app-b2a3d27b.js` to `app-e7c6facb.js`).
+- Reverting both edits gave back exactly the original hashes. Same content, same name.
+
+The first run failed with `ENOENT` on `index.html`, because the template lives in `src/` and the script looked in the project root. The hashed files and the manifest had already been written, and only the HTML step failed.
+
+## Compression on top
+
+I measured gzip (level 9) and brotli (quality 11) with Node’s built-in `zlib`. On the real build output the files are too small to say much, and gzip made the 107-byte JS file bigger, 118 bytes, because it adds a fixed header and trailer. So I also ran a larger real file, an unminified JS file from `node_modules`:
+
+- Original: 97,463 bytes raw, 21,396 gzip, 18,490 brotli.
+- Minified: 52,387 bytes raw, 16,404 gzip, 14,515 brotli.
+
+Minifying alone saved about 46%, but once gzip was applied it saved about 23%, because compression already removes the repeated whitespace and names that minifying strips. Doing both is still the smallest, and brotli beat gzip by about 12% on the minified file. From 97,463 bytes to 14,515 is about 85% less to download.
+
+## Serving it
+
+`server.js` is a small Node server that reads `dist/` at startup and precompresses every file. The policy is short:
+
+- Files with a hash in the name get `Cache-Control: public, max-age=31536000, immutable`.
+- `index.html` and `manifest.json` get `no-cache` plus an `ETag`, and a matching `If-None-Match` gets a `304` with no body.
+- Compression is chosen from `Accept-Encoding` (brotli, then gzip, then plain), with `Vary: Accept-Encoding` on everything.
+
+With nothing changed, a normal reload shows the whole idea <Ref n={1} />. The HTML is a `304` of 0.2 kB, and the CSS and JS cost no request at all.
+
+<Fig n={1} src={networkReload} alt="DevTools Network list after a normal reload: the HTML document returns 304 at 0.2 kB, the CSS and JS files show (memory cache) at 0 ms, and a%20b.png returns 404." size="wide">
+  A normal reload with nothing changed. The HTML is revalidated, the hashed files are not requested.
+</Fig>
+
+The `304` is the browser asking again with the `ETag` it already has <Ref n={2} />.
+
+<Fig n={2} src={index304} alt="DevTools headers for the localhost document request: status 304 Not Modified, response Cache-Control no-cache with an ETag, and request headers that include If-None-Match with the same ETag value." size="column">
+  The request for `index.html`. It sends `If-None-Match`, and the server answers `304` because the `ETag` still matches.
+</Fig>
+
+Then the payoff. I changed a colour, rebuilt, restarted the server and reloaded <Ref n={3} />. The HTML came back as a full `200` because it now names a new CSS file, the new CSS was fetched, and the JS did not move.
+
+<Fig n={3} src={afterChange} alt="DevTools Network list after rebuilding with a CSS change: the HTML document returns 200 at 0.4 kB, the new app-428e9d43.css returns 200 at 0.4 kB, app-b2a3d27b.js shows (disk cache), and a%20b.png returns 404." size="wide">
+  After a CSS change. Only the HTML and the new CSS crossed the network.
+</Fig>
+
+Two small surprises. DevTools showed a red `404` for `a%20b.png`: the test CSS references an image I never created, so the browser asked and the server said no. And Chrome sent `br` in `Accept-Encoding` even on plain `http://localhost`, so brotli was in use without HTTPS.
+
+## What’s next
+
+- Compare my hand-made manifest with the one Vite writes for the same files.
+- Give `server.js` a separate `ETag` per encoding. It currently uses one for all of them.
+- Add a second JS entry and see how hashes behave when chunks share code.
