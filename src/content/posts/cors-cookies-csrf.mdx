@@ -1,0 +1,137 @@
+---
+title: CORS, Cookies and CSRF
+date: 2026-11-14
+summary: A tiny Node API, a frontend and an evil page on three origins, to watch the browser block a read, send a cookie it shouldn’t, and then stop a CSRF attack with two separate defences.
+kind: build
+cover: ../../assets/posts/cors-cookies-csrf/cover.jpg
+coverAlt: Chrome showing the API’s JSON reply, with the balance at 600, after a form on an evil page fired a transfer. DevTools beside it lists the requests.
+stack: [Node.js, Chrome DevTools, curl]
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+import wall from '../../assets/posts/cors-cookies-csrf/cors-wall.jpg';
+import cookie from '../../assets/posts/cors-cookies-csrf/cookie-flags.jpg';
+import token from '../../assets/posts/cors-cookies-csrf/token-403.jpg';
+
+I have fought a “CORS error” more than once and usually fixed it by toggling settings until it went away. This time I wanted the actual model. So I built three tiny things on three origins and watched what the browser did: a frontend on `localhost:3000`, an API on `localhost:8080`, and an evil page on `127.0.0.1:4000`.
+
+## Origin and site are not the same thing
+
+Two different browser rules use two different definitions, and I kept mixing them up.
+
+- **Origin** is scheme, host and port. CORS and the same-origin policy compare origins. It decides whether JS may *read* a response.
+- **Site** is scheme and registrable domain, ignoring the port. `SameSite` cookies compare sites. It decides whether the browser *attaches* a cookie.
+
+So `localhost:3000` to `localhost:8080` is cross-origin but same-site, and `127.0.0.1` counts as a completely different site from `localhost`. That made `127.0.0.1:4000` a good stand-in for an attacker’s domain.
+
+## Hitting the wall
+
+The first API had no CORS headers. A plain `GET` from the frontend failed with a CORS error, and so did a JSON `POST`. The Network tab and the server log told the real story <Ref n={1} />.
+
+<Fig n={1} src={wall} alt="DevTools Network tab with three red rows: the me fetch and the transfer fetch both labelled CORS error, and a transfer preflight with status 404." size="wide">
+  Both fetches fail in the browser. The preflight returns 404 because nothing handles `OPTIONS`.
+</Fig>
+
+The simple `GET` still reached the server and ran the handler. The browser just refused to hand the response to my JS. The JSON `POST` never ran at all: `Content-Type: application/json` is enough to make a request non-simple, so the browser sent an `OPTIONS` preflight first, got a 404, and gave up. CORS doesn’t protect the server. It protects what a page can read.
+
+## CORS done properly
+
+The fix is an allowlist of exact origins, an `OPTIONS` handler that runs before any routing, and `Vary: Origin` so a cache can’t replay one origin’s headers to another.
+
+```js
+const ALLOWED = new Set(["http://localhost:3000"]);
+
+res.setHeader("Vary", "Origin");
+if (origin && ALLOWED.has(origin)) {
+  res.setHeader("Access-Control-Allow-Origin", origin);
+}
+if (req.method === "OPTIONS") {
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "600");
+  res.statusCode = 204;
+  return res.end();
+}
+```
+
+From `:3000` both calls worked and the preflight came back 204. From `:4000` the read was blocked. I also tried `Access-Control-Allow-Origin: *` together with `credentials: 'include'`, and Chrome refused it outright. That rule exists because with `*` any site could read a logged-in user’s private data.
+
+## Adding a session cookie
+
+`POST /login` sets `sid=...; HttpOnly; SameSite=Lax; Path=/`, and `/me` reads it. The frontend needed `credentials: 'include'`, and the API needed `Access-Control-Allow-Credentials: true` with the exact origin <Ref n={2} />.
+
+<Fig n={2} src={cookie} alt="DevTools Application tab listing the sid cookie with HttpOnly ticked, SameSite set to Lax and Path set to a slash." size="wide">
+  The session cookie as the browser stored it.
+</Fig>
+
+Two things made it click:
+
+- `document.cookie` returned an empty string. That is `HttpOnly`: JS can’t read the cookie, but the browser still sends it.
+- Without `credentials: 'include'`, `/me` came back 401 and the request had no `Cookie` header at all. For a cross-origin `fetch` the cookie is neither sent nor stored unless the client opts in.
+
+The way I sorted the settings in my head: some decide whether the cookie is **attached** (`include`, the cookie’s scope and `SameSite`), and some decide whether JS may **read** the answer (`Allow-Origin` and `Allow-Credentials`).
+
+## The attack
+
+The evil page is one hidden form that submits itself on load:
+
+```html
+<form id="f" method="POST" action="http://localhost:8080/transfer">
+  <input type="hidden" name="amount" value="100">
+</form>
+<script>document.getElementById('f').submit();</script>
+```
+
+A form post is a simple request, so there is no preflight and no CORS check. I made the cookie `SameSite=None; Secure`, logged in on `:3000`, and opened the evil page. The API log read:
+
+```text
+POST /transfer  Origin: http://127.0.0.1:4000  Cookie: sid=<redacted>
+TRANSFER by fikri. balance now 600
+```
+
+The page then showed the API’s JSON, because a form submit navigates the tab. The evil page never read that response, and it didn’t need to. The money had already moved.
+
+Then I switched the cookie to `SameSite=Lax` and tried again:
+
+```text
+POST /transfer  Origin: http://127.0.0.1:4000  Cookie: undefined
+```
+
+The cookie was still in the browser. The browser simply didn’t attach it to a cross-site `POST`, so the API answered 401 and nothing moved.
+
+## A second layer: a CSRF token
+
+`Lax` is one defence, and it has gaps. It doesn’t protect against an attacker on the same site, for example. I added a second layer that the server enforces. Login returns a random token, the frontend keeps it in memory, and `/transfer` demands it in a custom header:
+
+```js
+if (req.headers["x-csrf-token"] !== session.csrfToken) {
+  res.statusCode = 403;
+  return res.end(JSON.stringify({ error: "bad csrf token" }));
+}
+```
+
+With the cookie back on `None; Secure`, the evil page now got the cookie through but was rejected <Ref n={3} />. A form can’t set custom headers, and the token only travels in a response body that CORS lets `:3000` read, so the evil page can’t see it either.
+
+<Fig n={3} src={token} alt="Browser tab at localhost 8080 transfer showing the JSON error bad csrf token, with the DevTools console logging a 403 Forbidden for the POST." size="wide">
+  The cookie was sent, but the token check still returned 403.
+</Fig>
+
+So each layer blocked the attack on its own: `Lax` by withholding the cookie, the token by rejecting the request.
+
+## What broke
+
+- My first “evil” runs used `localhost:4000`, which is the same site as the API, so even a `Lax` cookie went out and money still moved. The attacker has to be on a different site.
+- I left `credentials: 'include'` commented out from an earlier experiment, so the cookie was never stored. Another time I put it inside `headers`, which made it a custom header instead of a fetch option.
+- I declared `balance` inside the `/login` branch, so `/transfer` couldn’t see it.
+- The full CORS message only shows in the Console tab. The Network tab says “CORS error”, and the server terminal says nothing, because the server never knows.
+
+## How this maps to Sanctum
+
+What I built by hand is Laravel Sanctum’s SPA flow in miniature. The session cookie is the session cookie. My token returned from login is the `XSRF-TOKEN` cookie that `GET /sanctum/csrf-cookie` sets, which JS reads and sends back as `X-XSRF-TOKEN`. My `ALLOWED` set is `allowed_origins` in `config/cors.php`, and `credentials: 'include'` is `withCredentials`. The `Domain` attribute is why `SESSION_DOMAIN` exists. A token-based mobile API needs no CSRF protection, because CSRF depends on the browser attaching credentials by itself, and an app only sends what its code adds.
+
+## What’s next
+
+- Checking `Origin` or `Sec-Fetch-Site` on the server as another CSRF layer.
+- Getting a proper local HTTPS setup instead of relying on Chrome’s `localhost` exception for `Secure` cookies.
+- Trying the same flow against a real Laravel and Sanctum install.
+- Looking at where a token should live in a browser app, and what `localStorage` costs in XSS exposure.
