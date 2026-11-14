@@ -1,0 +1,123 @@
+---
+title: Multi-stage Docker
+date: 2026-11-14
+summary: Shrinking a small Node and TypeScript API from 1.71GB to 351MB with layer ordering, multi-stage builds and a non-root user.
+kind: build
+status: done
+stack: [Docker, Colima, BuildKit, Node, TypeScript, Express]
+links:
+  - { label: Repo, href: 'https://github.com/ahmadanwar93/multi-stage-docker' }
+---
+import Fig from '../../components/Fig.astro';
+import Ref from '../../components/Ref.astro';
+
+I had only ever run `docker compose up` and `down`, never `docker build`. So I made a tiny Node and TypeScript API and built the same image three ways to see what changes: a naive Dockerfile, one that is friendly to the layer cache, and a multi-stage one.
+
+The app is one route that returns `{"message":"hello v1"}`. It is deliberately boring, because the interesting part is the image around it.
+
+## The naive baseline
+
+The first Dockerfile does what most of us write on day one: start from `node:22`, `COPY . .`, `npm install`, `npm run build`.
+
+| | Naive |
+|---|---|
+| Image size | 1.71GB (416MB compressed) |
+| Cold build, including pulling `node:22` | 1:00 |
+| Rebuild after a one-line change | 19s |
+
+`docker history` was the eye-opener. My own code is about 1.4MB. Almost everything else is the Debian base with its compilers and `node_modules`.
+
+{/* FIG 1: the docker history output for notes:naive, or a bar chart of naive vs multi-stage size. See shot list. */}
+
+## Layers and the cache
+
+An image is a stack of layers. A layer is reused only if the instruction, its inputs and the layer below it are all unchanged. The catch is that a change cascades downwards: once one layer is rebuilt, everything after it is rebuilt too.
+
+That is why my one-line edit reinstalled all 81 packages. `COPY . .` came before `npm install`, so any change to any file gave it a new hash and invalidated the install layer below it.
+
+The fix is to order instructions from least to most frequently changing. Copy only `package.json` and the lockfile, install, and then copy the source. I also added a `.dockerignore` so `node_modules`, `dist`, `.git` and `.env` never reach the build context.
+
+On the rebuild after a code edit, the install step now says `CACHED`:
+
+```text
+CACHED [3/6] COPY package.json package-lock.json ./
+CACHED [4/6] RUN npm ci
+[5/6] COPY . .
+[6/6] RUN npm run build
+```
+
+The rebuild dropped from 19s to 3.8s. I should be honest about that number: the naive build ran on Docker’s legacy builder and this one ran on BuildKit, and the app is so small that `npm ci` only took 1.6s. On a real project the saving would be far bigger. The image was still about 1.7GB, though. Ordering made rebuilds faster but did nothing for size.
+
+## Splitting build from run
+
+The size problem is that the image carries everything the build needed: the TypeScript compiler, `src/`, the type packages and a full Debian with gcc and git. At runtime the app only needs `dist/index.js` and `express`.
+
+A multi-stage Dockerfile has several `FROM` lines. Each starts a fresh filesystem, you copy chosen files between stages with `COPY --from`, and only the last stage becomes the image. Mine has three:
+
+```dockerfile
+FROM node:22 AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:22-slim AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+FROM node:22-slim
+WORKDIR /app
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+USER node
+EXPOSE 3000
+CMD ["node", "dist/index.js"]
+```
+
+The `build` stage needs the dev dependencies because `tsc` lives there. The `prod-deps` stage installs only production packages, so the TypeScript tooling never reaches the final image. The final stage is a slim base with just those two folders copied in.
+
+{/* FIG 2: diagram of the three stages and the two COPY --from arrows into the final stage. See shot list. */}
+
+| | Naive | Multi-stage |
+|---|---|---|
+| Size on disk | 1.71GB | 351MB |
+| Compressed | 416MB | 80.6MB |
+| Rebuild after a code edit | 19s | 5.0s |
+
+That is about five times smaller, and the compressed figure is what gets pushed and pulled on every deploy. The container still answered `curl localhost:3000`.
+
+Two things in the build log surprised me. The first four steps of the `build` stage said `CACHED`, reused from the earlier `Dockerfile.cached` build, because the cache keys on the instruction and its inputs, not on the file name. And `build` and `prod-deps` ran at the same time, since neither depends on the other.
+
+## Not running as root
+
+Out of the box the container ran as root:
+
+```text
+$ docker run --rm notes:multi id
+uid=0(root) gid=0(root) groups=0(root)
+```
+
+The official Node image already ships an unprivileged `node` user, so the fix was one line, `USER node`, placed after the copies:
+
+```text
+$ docker run --rm notes:hardened id
+uid=1000(node) gid=1000(node) groups=1000(node)
+```
+
+Every build step said `CACHED` on that rebuild, because `USER` only changes image metadata and adds no layer. Port 3000 still works, since only ports below 1024 need root.
+
+## Small things that tripped me up
+
+- Colima’s Docker CLI had no buildx plugin, so I was on the deprecated legacy builder. Symlinking an existing buildx binary into `~/.docker/cli-plugins/` fixed it.
+- `-p 3001:3001` returned nothing. The flag is `host:container`, and the app listens on 3000 inside the container, so it needed to be `-p 3001:3000`.
+- `docker compose down` cannot stop a container I started with `docker run`. `docker stop` can.
+
+## What’s next
+
+- Pin the base image tag, and optionally its digest, instead of floating on `node:22-slim`.
+- Look inside the image with `dive` for wasted bytes.
+- Pass a build secret with `--secret` instead of `ARG`, and check with `docker history` that it does not leak.
+- Add a BuildKit cache mount for the npm cache and compare cold and warm builds.
+- Work out the proper dev setup: how a Docker project should be organised from the start, and how bind mounts fit in.
